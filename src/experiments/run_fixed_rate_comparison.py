@@ -19,7 +19,7 @@ from src.models.glm_model import GLMClassifier
 from src.models.nn_model import PlainNN, predict_proba_plain_nn, train_plain_nn
 
 
-TARGET_RATE = 0.02
+TARGET_RATES = [0.01, 0.02, 0.05]
 ADV_LAMBDA = 0.8
 
 
@@ -60,11 +60,12 @@ def _build_loader_with_A(
     return DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 
-def _evaluate_model(model_name: str, y_test, y_proba, A_test):
+def _evaluate_model(model_name: str, y_test, y_proba, A_test, target_rate: float):
     accuracy = compute_accuracy_metrics(y_test, y_proba)
-    fairness = fairness_at_target_rate(y_test, y_proba, A_test, TARGET_RATE)
+    fairness = fairness_at_target_rate(y_test, y_proba, A_test, target_rate)
     return {
         "model_name": model_name,
+        "target_rate": target_rate,
         **accuracy,
         **fairness,
     }
@@ -81,13 +82,10 @@ def main() -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    results: list[dict] = []
-
     # GLM
     glm = GLMClassifier()
     glm.fit(X_train, y_train)
     y_proba_glm = glm.predict_proba(X_test)
-    results.append(_evaluate_model("GLM", y_test, y_proba_glm, A_test))
 
     # Plain NN
     X_tr, X_val, y_tr, y_val = train_test_split(
@@ -103,7 +101,6 @@ def main() -> None:
     plain_nn = PlainNN(input_dim=X_train.shape[1]).to(device)
     train_plain_nn(plain_nn, train_loader, val_loader, train_cfg, device)
     y_proba_nn = predict_proba_plain_nn(plain_nn, X_test, device=device)
-    results.append(_evaluate_model("NN", y_test, y_proba_nn, A_test))
 
     # Adversarial NN
     train_cfg_adv = replace(train_cfg, lambda_adv=ADV_LAMBDA)
@@ -113,9 +110,16 @@ def main() -> None:
     adv_model = AdvPredictor(input_dim=X_train.shape[1]).to(device)
     train_adv_nn(adv_model, adv_loader, train_cfg_adv, device=device)
     y_proba_adv = predict_proba_adv_nn(adv_model, X_test, device=device)
-    results.append(_evaluate_model("ADV_NN", y_test, y_proba_adv, A_test))
 
-    df_results = pd.DataFrame(results)
+    rows: list[dict] = []
+    for target_rate in TARGET_RATES:
+        rows.append(_evaluate_model("GLM", y_test, y_proba_glm, A_test, target_rate))
+        rows.append(_evaluate_model("NN", y_test, y_proba_nn, A_test, target_rate))
+        rows.append(
+            _evaluate_model("ADV_NN", y_test, y_proba_adv, A_test, target_rate)
+        )
+
+    df_results = pd.DataFrame(rows)
     print(df_results)
 
     os.makedirs("results", exist_ok=True)
