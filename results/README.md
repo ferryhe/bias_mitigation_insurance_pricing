@@ -19,3 +19,4 @@ To add a new run:
 | 20251112_175645 | lambda_sweep | λ sweep after removing double-counting of `lambda_adv` in adversarial training. |
 | 20251112_180036 | baseline | Added acceptance-rate thresholding (r = 2%) to compare fairness at matched selection rates. |
 | 20251112_181121 | lambda_sweep | Fine-grained λ grid `[0.05 … 2.0]` with detailed fairness columns. |
+| 20251112_181612 | lambda_sweep | Same grid, now with 3-epoch warm-up (predictor-only) before adversarial training. |

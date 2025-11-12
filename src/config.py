@@ -31,6 +31,7 @@ class TrainingConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
     lambda_adv: float = 0.1
+    warmup_epochs_adv: int = 5
 
 
 @dataclass(slots=True)

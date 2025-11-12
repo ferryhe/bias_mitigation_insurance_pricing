@@ -85,10 +85,12 @@ def train_adv_nn(
         weight_decay=config.weight_decay,
     )
 
-    for _ in range(config.n_epochs_adv):
+    for epoch in range(config.n_epochs_adv):
         model.train()
         adversary_y0.train()
         adversary_y1.train()
+
+        warmup_phase = epoch < getattr(config, "warmup_epochs_adv", 0)
 
         for X_batch, y_batch, A_batch in train_loader:
             X_batch = X_batch.to(device).float()
@@ -105,24 +107,31 @@ def train_adv_nn(
             mask_y0 = y_batch_binary == 0
             mask_y1 = y_batch_binary == 1
 
-            loss_adv_y0 = torch.tensor(0.0, device=device)
-            if mask_y0.any():
-                h0 = grad_reverse(h[mask_y0], 1.0)
-                logits_a0 = adversary_y0(h0)
-                loss_adv_y0 = criterion_adv(logits_a0, A_batch[mask_y0])
-                loss_adv_y0 = loss_adv_y0 * (mask_y0.sum() / batch_size)
+            if warmup_phase:
+                total_loss = loss_pred
+            else:
+                loss_adv_y0 = torch.tensor(0.0, device=device)
+                if mask_y0.any():
+                    h0 = grad_reverse(h[mask_y0], 1.0)
+                    logits_a0 = adversary_y0(h0)
+                    loss_adv_y0 = criterion_adv(logits_a0, A_batch[mask_y0])
+                    loss_adv_y0 = loss_adv_y0 * (mask_y0.sum() / batch_size)
 
-            loss_adv_y1 = torch.tensor(0.0, device=device)
-            if mask_y1.any():
-                h1 = grad_reverse(h[mask_y1], 1.0)
-                logits_a1 = adversary_y1(h1)
-                loss_adv_y1 = criterion_adv(logits_a1, A_batch[mask_y1])
-                loss_adv_y1 = loss_adv_y1 * (mask_y1.sum() / batch_size)
+                loss_adv_y1 = torch.tensor(0.0, device=device)
+                if mask_y1.any():
+                    h1 = grad_reverse(h[mask_y1], 1.0)
+                    logits_a1 = adversary_y1(h1)
+                    loss_adv_y1 = criterion_adv(logits_a1, A_batch[mask_y1])
+                    loss_adv_y1 = loss_adv_y1 * (mask_y1.sum() / batch_size)
 
-            adv_penalty = config.lambda_adv * (loss_adv_y0 + loss_adv_y1)
-            total_loss = loss_pred + adv_penalty
+                adv_penalty = config.lambda_adv * (loss_adv_y0 + loss_adv_y1)
+                total_loss = loss_pred + adv_penalty
+
             total_loss.backward()
             optimizer.step()
+
+        phase = "warmup" if warmup_phase else "adversarial"
+        print(f"Epoch {epoch} [{phase}]")
 
     return model
 
