@@ -24,3 +24,4 @@ To add a new run:
 | 20251112_183201 | fixed_rate | Compares GLM/NN/ADV_NN at a shared 2% approval rate. |
 | 20251112_183549 | fairness_frontier | Scatter plot of ROC AUC vs EO gap (λ sweep + GLM/NN baselines). |
 | 20251112_184018 | fixed_rate | Extends comparison to 1%, 2%, 5% approval rates. |
+| 20251112_184338 | fairness_vs_rate | Line plots of DP ratio and EO gap vs approval rate. |
