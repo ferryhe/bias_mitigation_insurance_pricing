@@ -44,8 +44,9 @@ The repository includes:
 credit_fairness_study/
 ├─ README.md
 ├─ requirements.txt / pyproject.toml
+├─ app.py                             # Streamlit front-end for browsing results
 ├─ notebooks/
-│   └─ exploration.ipynb              # interactive walkthrough / scratchpad
+│   └─ credit_fairness_demo.ipynb     # interactive walkthrough
 ├─ src/
 │   ├─ __init__.py
 │   ├─ config.py                       # dataclasses for sim / train / eval configs
@@ -152,6 +153,15 @@ python -m src.experiments.plot_fairness_vs_rate
 - `run_sanity_checks` results help verify the bias mechanism is the source of unfairness.
 
 Each command writes CSV/plots under `results/` and adds a timestamped folder with a short summary (see `results/README.md` for the run log).
+
+### Launching the Gradio dashboard
+
+```bash
+gradio app.py
+```
+
+- Shows the latest run name, README text, baseline metrics table, and fairness plots.
+- Ideal for deploying to Hugging Face Spaces (the Space will automatically start `app.py`).
 
 ### Adding a new experiment run
 
