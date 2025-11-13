@@ -1,160 +1,211 @@
 <div align="center">
 
-# Credit Insurance Fairness Study (Prototype)
+# Credit Insurance Fairness Study
 
-*Comparing GLM, plain NN, and Equalized-Odds adversarial NN under biased credit signals.*
+*Synthetic credit underwriting pipeline for benchmarking accuracy–fairness trade-offs.*
 
 </div>
 
 ---
 
-## 1. Why this project exists
+## 1. Project Overview
 
-Modern credit underwriting systems rarely observe “true” risk; proxies such as bureau scores or regional indicators often encode historical bias. This prototype simulates such a scenario:
+We simulate a credit-insurance setting where the *true* default risk is race-neutral, yet the **observed** credit score is biased against the protected group. Even without using race explicitly, this bias plus a correlated proxy (ZIP code) causes fairness violations.  
 
-- The *true* default risk is race-neutral and depends on a latent credit factor `S*`.
-- Lenders only see a biased score `S`, which is systematically lower for the protected group.
-- Even without using race directly, models trained on `S` violate Equalized Odds (EO) and Demographic Parity (DP).
+We compare three families of models:
 
-We study three models—GLM, plain NN, and an EO-driven adversarial NN—to quantify the accuracy–fairness trade-off and explore mitigation strategies.
+1. **GLM (Logistic Regression)** – fast, interpretable baseline.
+2. **Plain Neural Network** – small MLP that can exploit nonlinear interactions.
+3. **Adversarial Neural Network (ADV_NN)** – predictor + adversary heads with Gradient Reversal to enforce Equalized Odds (EO).
+
+The repository includes:
+- Reproducible data generation (60k samples by default).
+- Training scripts for all models (PyTorch + scikit-learn).
+- Evaluation utilities for accuracy + fairness metrics.
+- Experiments covering baseline comparisons, λ sweeps, fixed approval-rate fairness, and plotting scripts.
 
 ---
 
-## 2. Quick start
+## 2. Key Concepts
+
+| Concept | Summary |
+| --- | --- |
+| **Measurement bias** | Observed score `S = S* - bias_b * A + noise` systematically lowers protected-group values, even though latent score `S*` is race neutral. |
+| **Proxy variable `Z`** | Binary ZIP-like feature correlated with race; models that ingest `Z` leak group information inadvertently. |
+| **Protected attribute `A`** | Binary race indicator (0 = group B, 1 = group A); used only for auditing fairness. |
+| **Equalized Odds (EO)** | Requires TPR and FPR parity across groups at a chosen threshold. We report EO gaps: `|TPR_A - TPR_B|`, `|FPR_A - FPR_B|`. |
+| **Demographic Parity (DP)** | Requires equal overall selection rates: `Pr(ŷ=1 | A=1)` ≈ `Pr(ŷ=1 | A=0)`. We report DP difference and ratio. |
+
+---
+
+## 3. Repository Structure
+
+```text
+credit_fairness_study/
+├─ README.md
+├─ requirements.txt / pyproject.toml
+├─ notebooks/
+│   └─ exploration.ipynb              # interactive walkthrough / scratchpad
+├─ src/
+│   ├─ __init__.py
+│   ├─ config.py                       # dataclasses for sim / train / eval configs
+│   ├─ data_generation.py              # simulator + stratified split
+│   ├─ models/
+│   │   ├─ __init__.py
+│   │   ├─ glm_model.py                # scikit-learn logistic regression wrapper
+│   │   ├─ nn_model.py                 # plain PyTorch MLP + training helpers
+│   │   └─ adv_nn_model.py             # predictor trunk + adversaries + gradient reversal warm-up
+│   ├─ training/
+│   │   ├─ __init__.py
+│   │   ├─ train_glm.py                # end-to-end GLM pipeline (scaling, training, metrics)
+│   │   ├─ train_nn.py                 # plain NN training loop with loaders + eval
+│   │   └─ train_adv_nn.py             # ADV_NN training with warm-up + fairness metrics
+│   ├─ evaluation/
+│   │   ├─ __init__.py
+│   │   ├─ metrics.py                  # ROC/PR/Brier/log-loss helpers
+│   │   ├─ fairness.py                 # EO/DP metrics + target-rate utilities + thresholding
+│   │   └─ reporting.py                # format/save/print tables
+│   └─ experiments/
+│       ├─ __init__.py
+│       ├─ run_baseline.py             # GLM/NN/ADV_NN comparison
+│       ├─ run_lambda_sweep.py         # sweep λ for ADV_NN
+│       ├─ run_sanity_checks.py        # bias on/off + proxy ablation
+│       ├─ run_fixed_rate_comparison.py# fairness at fixed approval rates
+│       ├─ plot_fairness_accuracy_frontier.py # EO gap vs ROC AUC scatter
+│       └─ plot_fairness_vs_rate.py    # DP ratio & EO gap vs approval rate
+├─ results/                            # timestamped experiment outputs
+│   ├─ README.md                       # index of run IDs and experiment summaries
+│   └─ <run-id>/                       # e.g., results/20251112_184338/
+│       ├─ <experiment>/metrics.csv    # raw metrics
+│       ├─ ...plots...                 # plots per experiment
+│       └─ README.md                   # findings & recommendations for that run
+└─ tests/                              # pytest coverage for data/metrics/models
+```
+
+---
+
+## 4. Getting Started
 
 ```bash
+python --version    # ensure >= 3.10
 python -m venv .venv
 source .venv/bin/activate               # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest                                   # run smoke tests
-python -m src.experiments.run_baseline   # compare GLM / NN / ADV_NN
+pytest                                   # optional smoke tests (≈5s)
 ```
 
-All experiment scripts write CSV outputs to `results/`.
+To generate a fresh dataset and run the default comparison:
+
+```bash
+python -m src.experiments.run_baseline
+```
+
+CSV outputs land in `results/<run-id>/...`.
 
 ---
 
-## 3. Code structure at a glance
+## 5. Running the Demo Notebook
 
-````text
-credit_fairness_study/
-├─ README.md
-├─ pyproject.toml / requirements.txt
-├─ notebooks/
-│   └─ exploration.ipynb      # use for ad-hoc EDA or plots
-├─ src/
-│   ├─ config.py              # dataclasses for sim/train/eval configs
-│   ├─ data_generation.py     # biased credit simulator + stratified split
-│   ├─ models/
-│   │   ├─ glm_model.py       # sklearn logistic regression wrapper
-│   │   ├─ nn_model.py        # plain PyTorch MLP + train/predict helpers
-│   │   └─ adv_nn_model.py    # EO adversarial network & gradient reversal
-│   ├─ training/
-│   │   ├─ train_glm.py       # preprocessing + eval pipeline for GLM
-│   │   ├─ train_nn.py        # same for plain NN
-│   │   └─ train_adv_nn.py    # same for adversarial NN
-│   ├─ evaluation/
-│   │   ├─ metrics.py         # accuracy metrics (ROC/PR/Brier/LogLoss)
-│   │   ├─ fairness.py        # EO & DP computations per group
-│   │   └─ reporting.py       # format/save/print metric tables
-│   └─ experiments/
-│       ├─ run_baseline.py    # main comparison of three models
-│       ├─ run_lambda_sweep.py# λ sweep for adversarial strength
-│       └─ run_sanity_checks.py# bias/no-bias + proxy ablation studies
-└─ tests/
-    ├─ test_data_generation.py
-    ├─ test_metrics.py
-    └─ test_models.py
-````
+Interactive notebooks:
 
-Each submodule has a narrow responsibility so you can swap components (e.g., plug in different models or fairness diagnostics) without touching the rest of the stack.
+- `notebooks/credit_fairness_demo.ipynb` – full end-to-end run (data → models → metrics).
+- `notebooks/exploration.ipynb` – scratchpad for ad-hoc analysis / plotting.
+
+1. Activate the virtual environment (`source .venv/bin/activate`).
+2. Launch Jupyter or VS Code’s notebook UI.
+3. The notebook walks through:
+   - Data generation (inspect distributions, group-level metrics).
+   - Training GLM / NN / ADV_NN inline.
+   - Visual diagnostics (score histograms, EO gap vs threshold).
+4. Modify cells to try alternative configs (e.g., change `bias_b`, `lambda_adv`, approval rates).
 
 ---
 
-## 4. Problem setup & data-generating process
+## 6. Running Key Experiments
 
-| Variable | Description | Used for |
-| --- | --- | --- |
-| `A` | Protected attribute (race), audit-only | fairness auditing |
-| `S*` | Latent unbiased credit score | drives true default risk |
-| `S` | Observed biased score (`S* - bias_b*A + noise`) | model feature |
-| `D` | Debt-to-income ratio (log-normal, clipped) | model feature |
-| `L` | Past delinquencies (Poisson) | model feature |
-| `Z` | Proxy (ZIP), correlated with `A` | feature / adversary target |
-| `Y` | Default outcome (Bernoulli on sigmoid of `S*`, `D`, `L`) | target |
+All scripts are executable via `python -m src.experiments.<name>` and record artifacts in `results/`.
 
-- Bias mechanism: only `S` is biased; `Y` is independent of race conditional on `S*`.  
-- Intercept in the outcome model is calibrated via bisection so that `E[Y] ≈ 12%`.  
-- Result: fairness gaps emerge purely because we train on biased and proxy-laden features.
+### Baseline (GLM / NN / ADV_NN)
+```bash
+python -m src.experiments.run_baseline
+```
+Outputs `results/<run-id>/baseline/metrics.csv` plus summary README.
 
----
+### Lambda sweep (accuracy–fairness frontier)
+```bash
+python -m src.experiments.run_lambda_sweep
+python -m src.experiments.plot_fairness_accuracy_frontier
+```
+- Sweep logs ROC AUC + EO gaps vs λ (0.05 → 2.0).
+- Plot script produces `results/fairness_accuracy_frontier.png` (also copied into the latest run folder, e.g., `results/<run-id>/fairness_frontier/`).
 
-## 5. Models compared
+### Fixed-rate fairness comparison (1%, 2%, 5% approvals)
+```bash
+python -m src.experiments.run_fixed_rate_comparison
+python -m src.experiments.plot_fairness_vs_rate
+```
+- Generates `results/fixed_rate_comparison.csv` plus timestamped copies (e.g., `results/20251112_184018/fixed_rate/metrics.csv`).
+- Produces line charts: `results/fairness_vs_rate_dp.png`, `results/fairness_vs_rate_eo.png` (also archived under `results/20251112_184338/fairness_vs_rate/`).
 
-| Model | Features | Notes |
-| --- | --- | --- |
-| **GLM** | `[S, D, L, Z]` (numeric scaled, `Z` passthrough) | Strong baseline; fast to train but inherits bias in inputs. |
-| **Plain NN** | same features as GLM | Two-layer MLP (16→8 units, dropout 0.1). Can capture nonlinearities but may latch onto proxies even more strongly. |
-| **Adversarial NN** | Predictor uses `[S, D, L]`; two adversaries try to predict `Z` within `Y=0` and `Y=1` subsets | Gradient reversal with weight `λ = train_cfg.lambda_adv` pushes the predictor to remove `Z` info per label slice, targeting Equalized Odds. |
+### Additional scripts
+- `run_sanity_checks` – toggles measurement bias & proxy usage.
+- `run_sanity_checks` results help verify the bias mechanism is the source of unfairness.
 
----
-
-## 6. Metrics
-
-- **Accuracy**: ROC AUC, PR AUC, Brier score, Log Loss (from `src/evaluation/metrics.py`).
-- **Fairness** (at threshold `eval_cfg.threshold`, default 0.5):
-  - EO gaps: `|TPR_A - TPR_B|`, `|FPR_A - FPR_B|`.
-  - Demographic Parity: selection-rate difference and ratio.
-  - Group ROC AUCs to inspect ranking disparities.
-
-Expect the adversarial NN to shrink EO gaps by ~30–60% relative to GLM/NN with only a small accuracy cost when `lambda_adv` is tuned between 0.3 and 1.0.
+Each command writes CSV/plots under `results/` and adds a timestamped folder with a short summary (see `results/README.md` for the run log).
 
 ---
 
-## 7. Built-in experiments
+## 7. Model Architecture
 
-| Script | What it does |
+**Adversarial NN (Equalized Odds)**  
+
+```
+Input x = [S, D, L] ──► Predictor trunk ──► Shared representation h
+                                │
+                                │ (prediction head)
+                                ▼
+                             ŷ logits
+                                │
+                                │ (Gradient Reversal Layer, λ)
+                                ▼
+                    ┌──────── Adversary head (Y=0) ─► predict Z
+                    │
+Shared h ──[GRL]────┤
+                    │
+                    └──────── Adversary head (Y=1) ─► predict Z
+```
+
+- Predictor minimizes BCE on default prediction.
+- Adversary heads (one per true label) try to recover proxy `Z`; Gradient Reversal makes the predictor *confound* them, encouraging EO parity.
+- Warm-up epochs train the predictor alone before adversaries kick in (configurable via `warmup_epochs_adv`).
+
+---
+
+## 8. Summary of Findings
+
+- **GLM**: Highest ROC AUC (~0.77–0.78) but largest EO/DP gaps under measurement bias (EO ΔTPR ≈ 0.06–0.08; DP ratio up to 3.4 when approval rate is tight).
+- **Plain NN**: Similar accuracy, fairness improves slightly but inconsistently; can even worsen DP because it overfits proxies.
+- **ADV_NN (λ ≈ 0.8)**: Best fairness/accuracy trade-off. ROC AUC remains ~0.76 while EO gaps drop below 0.02–0.03 and DP ratios hover near 1.0–1.3.
+- **Fixed approval rates (1–5%)**: ADV_NN keeps DP ratios between 1.0–1.3 vs GLM’s 2.2–3.1; gains are most pronounced at strict approval rates (1%).
+
+**Figure guide**
+
+| Figure | Description |
 | --- | --- |
-| `python -m src.experiments.run_baseline` | Full sim → GLM, NN, ADV_NN comparison. |
-| `python -m src.experiments.run_lambda_sweep` | Varies `lambda_adv` ∈ {0.1, 0.3, 0.5, 1.0, 3.0}, logs ROC AUC and EO gaps, optionally plots trade-off curve. |
-| `python -m src.experiments.run_sanity_checks` | a) measurement bias on vs off, b) models with/without proxy `Z`; checks that fairness gaps behave as expected. |
-
-All metrics are funneled through `format_metrics_table` / `save_metrics`, so CSV outputs live under `results/`.
+| `results/fairness_accuracy_frontier.png` | Scatter: EO gap vs ROC AUC for each λ + GLM/NN markers. |
+| `results/fairness_vs_rate/dp_ratio.png` | Lines: DP ratio vs approval rate (GLM/NN/ADV_NN). |
+| `results/fairness_vs_rate/eo_gap.png` | Lines: EO TPR gap vs approval rate. |
 
 ---
 
-## 8. Typical observations (default config: 60k rows, 80/20 split)
+## 9. Future Extensions
 
-| Model | ROC AUC | PR AUC | Brier | EO ΔTPR | EO ΔFPR | DP diff | DP ratio |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| GLM | ~0.77–0.81 | 0.24–0.32 | 0.09–0.11 | 0.10–0.18 | 0.05–0.12 | 0.08–0.20 | 1.15–1.45 |
-| NN | similar ±0.02 AUC vs GLM | similar | similar | EO gaps similar or slightly worse than GLM | — | — | — |
-| ADV_NN (`λ ≈ 0.5`) | within 0–1 AUC pts of best model | similar | slightly higher Brier if λ too big | EO gaps down to 0.04–0.09 / 0.02–0.06 | DP diff closer to 0 | DP ratio closer to 1 |
-
-Sanity checks: set `bias_b = 0` and fairness gaps collapse across models; increase `lambda_adv` and EO improves until accuracy drops sharply.
+- **Calibration**: Add isotonic/Platt scaling and compare fairness metrics post-calibration.
+- **Threshold sweeps**: Evaluate EO/DP across thresholds to select policy-driven operating points.
+- **Bootstrap confidence intervals**: Quantify uncertainty in ROC AUC and fairness metrics.
+- **Alternative mitigations**: Implement reweighting, reject-option classification, or group-specific thresholds for comparison.
+- **More proxies / features**: Add new biased signals (e.g., employment history) to study multi-proxy effects.
 
 ---
 
-## 9. Future directions
-
-- Add calibration diagnostics (ECE, reliability plots).
-- Extend experiments with bootstrap confidence intervals.
-- Try threshold optimization per policy target (choose TPR/FPR trade-off post-hoc).
-- Plug in alternative mitigation methods (reweighting, post-processing) to compare against adversarial training.
-
----
-
-## 10. Troubleshooting tips
-
-| Symptom | Possible fix |
-| --- | --- |
-| ROC AUC ≈ 0.5 for all models | Verify simulator parameters (e.g., `alpha_s`, `alpha_d`, `alpha_l` not near zero). |
-| EO gaps unchanged when sweeping λ | Ensure adversaries receive **true** labels for slicing and that gradient reversal is applied (see `train_adv_nn`). |
-| Training slow | Reduce `n_samples`, epochs, or increase batch size. |
-| NaNs in losses | Probabilities are already clipped in metrics; double-check data preprocessing for NaNs. |
-
----
-
-## 11. Credits & licenses
-
-MIT-style research prototype inspired by fairness-in-ML literature (Hardt et al. 2016, Ganin et al. 2015). Feel free to fork, extend, or plug pieces into your own fairness benchmarking pipeline.
+For questions or contributions, open an issue or PR. Happy experimenting! 🧪
