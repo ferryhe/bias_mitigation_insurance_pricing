@@ -1,21 +1,38 @@
 from __future__ import annotations
 
-import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
 
-INPUT_PATH = "results/fixed_rate_comparison.csv"
-OUTPUT_DP = "results/fairness_vs_rate_dp.png"
-OUTPUT_EO = "results/fairness_vs_rate_eo.png"
+OUTPUT_DP = Path("results/fairness_vs_rate_dp.png")
+OUTPUT_EO = Path("results/fairness_vs_rate_eo.png")
+
+
+def _find_metrics(experiment: str) -> Path:
+    root = Path("results")
+    direct = root / f"{experiment}.csv"
+    if direct.exists():
+        return direct
+    folder_alias = {
+        "fixed_rate_comparison": "fixed_rate",
+        "lambda_sweep": "lambda_sweep",
+    }
+    target_folder = folder_alias.get(experiment, experiment)
+    for run_dir in sorted(
+        (p for p in root.iterdir() if p.is_dir()),
+        key=lambda p: p.name,
+        reverse=True,
+    ):
+        candidate = run_dir / target_folder / "metrics.csv"
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"Missing metrics for {experiment}")
 
 
 def main() -> None:
-    if not os.path.exists(INPUT_PATH):
-        raise FileNotFoundError(f"Missing fixed-rate CSV: {INPUT_PATH}")
-
-    df = pd.read_csv(INPUT_PATH)
+    df = pd.read_csv(_find_metrics("fixed_rate_comparison"))
     df_sorted = df.sort_values("target_rate")
 
     models = ["GLM", "NN", "ADV_NN"]
@@ -37,7 +54,7 @@ def main() -> None:
     plt.title("DP Ratio vs Approval Rate")
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.legend()
-    os.makedirs(os.path.dirname(OUTPUT_DP) or ".", exist_ok=True)
+    OUTPUT_DP.parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
     plt.savefig(OUTPUT_DP, dpi=200)
     plt.close()

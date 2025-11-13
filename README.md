@@ -153,6 +153,16 @@ python -m src.experiments.plot_fairness_vs_rate
 
 Each command writes CSV/plots under `results/` and adds a timestamped folder with a short summary (see `results/README.md` for the run log).
 
+### Adding a new experiment run
+
+1. Move the artifacts from the script(s) you ran into `results/<YYYYMMDD_HHMMSS>/<experiment>/` (e.g., `lambda_sweep`, `fixed_rate`).
+2. In each run folder, add a `README.md` capturing:
+   - Configuration knobs (`lambda_adv`, target rates, bias flags).
+   - Key metrics (accuracy + fairness) in table form.
+   - Observations, anomalies, or follow-up ideas.
+3. Update `results/README.md` to log the new run ID and link to its README.
+4. Use existing run folders as templates for phrasing and formatting.
+
 ---
 
 ## 7. Model Architecture

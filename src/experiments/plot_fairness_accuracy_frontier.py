@@ -1,29 +1,43 @@
 from __future__ import annotations
 
-import os
+import json
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
 
-LAMBDA_SWEEP_PATH = "results/lambda_sweep.csv"
-FIXED_RATE_PATH = "results/fixed_rate_comparison.csv"
-OUTPUT_PATH = "results/fairness_accuracy_frontier.png"
+OUTPUT_PATH = Path("results/fairness_accuracy_frontier.png")
+
+
+def _find_metrics(experiment: str) -> Path:
+    root = Path("results")
+    direct = root / f"{experiment}.csv"
+    if direct.exists():
+        return direct
+    folder_alias = {
+        "fixed_rate_comparison": "fixed_rate",
+        "lambda_sweep": "lambda_sweep",
+    }
+    target_folder = folder_alias.get(experiment, experiment)
+    for run_dir in sorted(
+        (p for p in root.iterdir() if p.is_dir()),
+        key=lambda p: p.name,
+        reverse=True,
+    ):
+        candidate = run_dir / target_folder / "metrics.csv"
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"Could not find metrics for {experiment}")
 
 
 def main() -> None:
-    if not os.path.exists(LAMBDA_SWEEP_PATH):
-        raise FileNotFoundError(f"Missing lambda sweep CSV: {LAMBDA_SWEEP_PATH}")
-    if not os.path.exists(FIXED_RATE_PATH):
-        raise FileNotFoundError(f"Missing fixed-rate CSV: {FIXED_RATE_PATH}")
-
-    df_lambda = pd.read_csv(LAMBDA_SWEEP_PATH)
-    df_fixed = pd.read_csv(FIXED_RATE_PATH)
+    df_lambda = pd.read_csv(_find_metrics("lambda_sweep"))
+    df_fixed = pd.read_csv(_find_metrics("fixed_rate_comparison"))
 
     plt.figure(figsize=(7, 5))
     plt.grid(True, linestyle="--", alpha=0.5)
 
-    # Lambda sweep points
     plt.scatter(
         df_lambda["eo_gap_tpr"],
         df_lambda["roc_auc"],
@@ -39,7 +53,6 @@ def main() -> None:
             fontsize=8,
         )
 
-    # Baseline GLM / NN
     for model_name, color in [("GLM", "tab:orange"), ("NN", "tab:green")]:
         row = df_fixed[df_fixed["model_name"] == model_name].iloc[0]
         plt.scatter(
@@ -64,7 +77,7 @@ def main() -> None:
     plt.ylabel("ROC AUC")
     plt.legend()
 
-    os.makedirs(os.path.dirname(OUTPUT_PATH) or ".", exist_ok=True)
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
     plt.savefig(OUTPUT_PATH, dpi=200)
     plt.close()

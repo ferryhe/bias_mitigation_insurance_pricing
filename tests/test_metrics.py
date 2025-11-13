@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from src.evaluation.metrics import compute_accuracy_metrics
-from src.evaluation.fairness import fairness_metrics
+from src.evaluation.fairness import fairness_at_target_rate, fairness_metrics
 from src.evaluation.thresholds import threshold_for_acceptance_rate
 
 
@@ -53,3 +53,15 @@ def test_threshold_for_acceptance_rate():
     actual_rate = (y_proba >= thr).mean()
     assert actual_rate >= target_rate
     assert actual_rate - target_rate < 0.05
+
+
+def test_fairness_at_target_rate():
+    y_true = np.array([0, 1, 1, 0, 1, 0])
+    y_proba = np.array([0.05, 0.9, 0.7, 0.2, 0.8, 0.4])
+    A = np.array([0, 0, 1, 1, 0, 1])
+    target_rate = 0.5
+
+    metrics = fairness_at_target_rate(y_true, y_proba, A, target_rate)
+    assert "threshold" in metrics and "actual_rate" in metrics
+    assert abs(metrics["actual_rate"] - target_rate) < 0.2
+    assert 0.0 <= metrics["threshold"] <= 1.0
