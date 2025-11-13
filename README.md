@@ -1,6 +1,6 @@
 <div align="center">
 
-# Credit Insurance Fairness Study
+# Evaluating Bias Mitigation Strategies in AI Models for Insurance Pricing
 
 *Synthetic credit underwriting pipeline for benchmarking accuracy–fairness trade-offs.*
 
