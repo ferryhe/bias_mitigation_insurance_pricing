@@ -8,6 +8,7 @@ import torch
 from pathlib import Path
 
 from src.auto import generate_auto_insurance_data
+from src.common.feature_spec import FeatureSpec
 from src.config import get_default_configs, get_default_auto_simulation_config
 from src.credit import train_test_split_df
 from src.evaluation.reporting import format_metrics_table, save_metrics
