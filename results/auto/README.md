@@ -20,3 +20,4 @@ Each run folder should contain:
 | Run ID | Experiments | Description |
 | --- | --- | --- |
 | 20251113_203022 | baseline | Initial auto baseline rerun (2% acceptance slice, debug histograms) to align the auto product with the credit reporting structure. |
+| 20251113_203720 | bias_sweep | Bias-strength sweep (`[0.0, 0.25, 0.5, 1.0, 2.0]`) to stress-test fairness gaps and log the sweep metrics in `bias_sweep_metrics.csv`. |
