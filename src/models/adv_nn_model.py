@@ -54,7 +54,9 @@ class AdversaryHead(nn.Module):
     def __init__(self, input_dim: int) -> None:
         super().__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_dim, 8),
+            nn.Linear(input_dim, 16),
+            nn.ReLU(),
+            nn.Linear(16, 8),
             nn.ReLU(),
             nn.Linear(8, 2),
         )

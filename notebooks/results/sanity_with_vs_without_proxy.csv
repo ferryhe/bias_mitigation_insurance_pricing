@@ -1,0 +1,5 @@
+experiment,scenario,use_proxy,model_name,eo_gap_tpr,eo_gap_fpr,dp_diff,dp_ratio
+proxy_feature,with_proxy,True,GLM,0.06576543660942638,0.01490623466384529,0.020339883690459942,3.4127416577668312
+proxy_feature,with_proxy,True,ADV_NN,0.017019851418828398,0.0012700529619222689,0.0029439506811243044,2.047644994660099
+proxy_feature,without_proxy,False,GLM,0.06890147363293145,0.01615526926861835,0.021809807262702506,3.754015823543515
+proxy_feature,without_proxy,False,ADV_NN,0.0,0.0,0.0,
