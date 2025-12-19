@@ -9,46 +9,61 @@ import pandas as pd
 OUTPUT_PATH = Path("results/auto/fairness_accuracy_frontier.png")
 
 
-def _find_metrics(filename: str) -> Path:
-    root = Path("results/auto")
-    direct = root / filename
-    if direct.exists():
-        return direct
+def _find_metrics(experiment: str) -> Path:
+    root = Path("results")
+    candidates = [
+        root / "auto" / f"{experiment}.csv",
+        root / f"{experiment}.csv",
+    ]
+    for run_dir in sorted(
+        (p for p in root.iterdir() if p.is_dir()),
+        key=lambda p: p.name,
+        reverse=True,
+    ):
+        candidates.append(run_dir / "auto" / experiment / "metrics.csv")
+        candidates.append(run_dir / experiment / "metrics.csv")
+    for path in candidates:
+        if path.exists():
+            return path
+    raise FileNotFoundError(f"Could not find metrics for {experiment}")
 
-    run_dirs = [p for p in root.iterdir() if p.is_dir()]
-    for run_dir in sorted(run_dirs, key=lambda p: p.name, reverse=True):
-        candidate = run_dir / filename
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(f"Could not find {filename} under results/auto")
 
-
-def plot_fairness_accuracy_frontier(df_bias: pd.DataFrame) -> Path:
+def plot_fairness_accuracy_frontier(df_lambda: pd.DataFrame, df_fixed: pd.DataFrame) -> Path:
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.grid(True, linestyle="--", alpha=0.5)
 
-    colors = {"GLM": "tab:orange", "NN": "tab:green", "ADV_NN": "tab:purple"}
-    for model_name, color in colors.items():
-        subset = df_bias[df_bias["model_name"] == model_name]
+    ax.scatter(
+        df_lambda["eo_gap_tpr"],
+        df_lambda["roc_auc"],
+        c="tab:blue",
+        label="Adv NN lambda sweep",
+    )
+    for _, row in df_lambda.iterrows():
+        ax.annotate(
+            f"lambda={row['lambda_adv']}",
+            (row["eo_gap_tpr"], row["roc_auc"]),
+            textcoords="offset points",
+            xytext=(5, 5),
+            fontsize=8,
+        )
+
+    for model_name, color in [("GLM", "tab:orange"), ("NN", "tab:green"), ("ADV_NN", "tab:purple")]:
+        subset = df_fixed[df_fixed["model_name"] == model_name]
         if subset.empty:
             continue
-        ax.scatter(
-            subset["eo_gap_tpr"],
-            subset["roc_auc"],
-            label=model_name,
+        row = subset.iloc[0]
+        ax.scatter(row["eo_gap_tpr"], row["roc_auc"], c=color, marker="D", label=model_name)
+        ax.annotate(
+            model_name,
+            (row["eo_gap_tpr"], row["roc_auc"]),
+            textcoords="offset points",
+            xytext=(5, -10),
+            fontsize=9,
+            fontweight="bold",
             color=color,
-            alpha=0.85,
         )
-        for _, row in subset.iterrows():
-            ax.annotate(
-                f"bias={row['bias_strength']}",
-                (row["eo_gap_tpr"], row["roc_auc"]),
-                textcoords="offset points",
-                xytext=(5, 5),
-                fontsize=8,
-            )
 
-    ax.set_title("Auto fairness vs accuracy (Equalized Odds)")
+    ax.set_title("Fairness vs Accuracy (Equalized Odds)")
     ax.set_xlabel("EO TPR difference")
     ax.set_ylabel("ROC AUC")
     ax.legend()
@@ -61,8 +76,9 @@ def plot_fairness_accuracy_frontier(df_bias: pd.DataFrame) -> Path:
 
 
 def main() -> Path:
-    bias_df = pd.read_csv(_find_metrics("bias_sweep_metrics.csv"))
-    path = plot_fairness_accuracy_frontier(bias_df)
+    df_lambda = pd.read_csv(_find_metrics("lambda_sweep"))
+    df_fixed = pd.read_csv(_find_metrics("fixed_rate_comparison"))
+    path = plot_fairness_accuracy_frontier(df_lambda, df_fixed)
     print(f"Saved plot to {path}")
     return path
 

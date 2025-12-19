@@ -87,12 +87,12 @@ def generate_life_underwriting_data(
     #    Use Normal instead of TruncNorm to be closer to credit.
     z_star = rng.normal(loc=700.0, scale=50.0, size=n_samples)
 
-    # 3. Observed credit Z with measurement bias against high-risk territory T=1
-    #    (like S = S_star - b * 1{T=1} + noise in credit)
+    # 3. Observed credit Z with measurement bias against Race A
+    #    (like S = S_star - b * 1{Race=A} + noise in credit)
     b = 40.0
     tau_z = 25.0
     eps_z = rng.normal(loc=0.0, scale=tau_z, size=n_samples)
-    z_obs = z_star - b * territory + eps_z
+    z_obs = z_star - b * race_is_a + eps_z
     z_obs = np.clip(z_obs, 300.0, 850.0)
 
     # 4. Age & BMI (life-style, independent of Race except via BMI_cat tuning)
@@ -184,7 +184,15 @@ def generate_life_underwriting_data(
     beta_s   =  0.40   # smoker more risky
     beta_c   =  0.80   # chronic more risky
     beta_r   =  0.40   # risky job more risky
-    gamma_z  =  -1.50   # modest Z_star effect (reduced)
+    gamma_z  =  -1.50   # higher Z_star lowers risk (stronger than original)
+
+    # Nonlinear and interaction effects to foil simple GLMs
+    beta_age2     =  0.05
+    beta_bmi2     =  0.06
+    beta_age_bmi  =  0.08
+    beta_s_age    =  0.15
+    beta_c_bmi    =  0.20
+    gamma_z_quad  =  0.12
 
     # Linear predictor without intercept
     eta_no_intercept = (
@@ -193,7 +201,13 @@ def generate_life_underwriting_data(
         + beta_s * s_smoker
         + beta_c * c_chronic
         + beta_r * r_risky
-        + gamma_z * (700.0 - z_star) / 50.0
+        + gamma_z * (z_star - 700.0) / 50.0
+        + beta_age2 * age_g**2
+        + beta_bmi2 * bmi_g**2
+        + beta_age_bmi * age_g * bmi_g
+        + beta_s_age * s_smoker * age_g
+        + beta_c_bmi * c_chronic * bmi_g
+        + gamma_z_quad * ((z_star - 700.0) / 50.0) ** 2
     )
 
     # Target event rate, e.g. 15%
