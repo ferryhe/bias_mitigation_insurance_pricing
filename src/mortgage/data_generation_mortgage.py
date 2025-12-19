@@ -85,7 +85,7 @@ def generate_mortgage_default_data(
     # Default probability driven by latent FICO
     alpha_f, alpha_l, alpha_d = -0.015, -3.0, -2.0
     eta_no_intercept = alpha_f * fico_star - alpha_l * ltv - alpha_d * dti
-    alpha_0 = _calibrate_intercept(eta_no_intercept, target_rate=0.10, lower=-10.0, upper=10.0, n_iter=50)
+    alpha_0 = _calibrate_intercept(eta_no_intercept, target_rate=0.20, lower=-10.0, upper=10.0, n_iter=50)
     p_default = _sigma(alpha_0 + eta_no_intercept)
 
     # Default outcome

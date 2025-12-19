@@ -4,6 +4,7 @@ from typing import Tuple
 
 import numpy as np
 import pandas as pd
+from src.config import AutoSimulationConfig
 
 
 def _sigma(x: np.ndarray) -> np.ndarray:
@@ -46,6 +47,10 @@ def _calibrate_intercept(
         else:
             b_u = b_m
     return 0.5 * (b_l + b_u)
+
+
+def _as_probability(values: np.ndarray) -> np.ndarray:
+    return np.clip(values, 1e-6, 1.0 - 1e-6)
 
 
 def generate_auto_underwriting_data(
@@ -112,6 +117,110 @@ def generate_auto_underwriting_data(
             "V_star": v_star,
         }
     )
+
+
+def generate_auto_insurance_data(
+    sim_cfg: AutoSimulationConfig | None = None,
+) -> pd.DataFrame:
+    """
+    Simulate an auto insurance dataset aligned with AutoSimulationConfig.
+
+    Returns columns expected by the auto experiments:
+    ['territory','age','years_licensed','annual_mileage','vehicle_use',
+     'vehicle_age','vehicle_value','safety_score','past_claims_obs',
+     'violations_obs','credit_score','income','claim_indicator','A'].
+    """
+
+    sim_cfg = sim_cfg or AutoSimulationConfig()
+    rng = np.random.default_rng(sim_cfg.seed)
+    n = sim_cfg.n_samples
+
+    A = rng.binomial(1, sim_cfg.p_protected, size=n)
+    territory_p = _as_probability(0.55 + 0.20 * A)
+    territory = rng.binomial(1, territory_p)
+
+    age = np.clip(rng.normal(45.0 - 2.0 * A, 12.0, size=n), 18.0, 85.0)
+    years_licensed = np.clip(age - rng.normal(17.0, 2.0, size=n), 0.0, None)
+    annual_mileage = np.clip(rng.normal(12_000.0, 3_000.0, size=n), 4_000.0, 35_000.0)
+    vehicle_use = rng.binomial(1, _as_probability(0.40 + 0.10 * A))
+    vehicle_age = np.clip(rng.exponential(6.0, size=n), 0.0, 25.0)
+    vehicle_value = np.clip(
+        rng.lognormal(mean=np.log(22_000.0) - 0.05 * A, sigma=0.35, size=n),
+        5_000.0,
+        80_000.0,
+    )
+    safety_score = np.clip(rng.normal(0.70 - 0.05 * A, 0.10, size=n), 0.20, 0.95)
+
+    lambda_claims = np.clip(0.20 + 0.30 * territory + 0.10 * A, 0.01, None)
+    past_claims_true = rng.poisson(lam=lambda_claims, size=n)
+    lambda_violations = np.clip(0.40 + 0.30 * territory + 0.05 * (annual_mileage / 1_000.0), 0.01, None)
+    violations_true = rng.poisson(lam=lambda_violations, size=n)
+
+    extra_claims = rng.binomial(1, _as_probability(sim_cfg.p_extra_claim * A), size=n)
+    extra_violations = rng.binomial(1, _as_probability(sim_cfg.p_extra_violation * A), size=n)
+    past_claims_obs = past_claims_true + extra_claims
+    violations_obs = violations_true + extra_violations
+
+    credit_score = np.clip(rng.normal(700.0 - 30.0 * A - 15.0 * territory, 55.0, size=n), 500.0, 850.0)
+    income = np.clip(
+        rng.lognormal(mean=np.log(70_000.0) - 0.12 * A, sigma=0.45, size=n),
+        20_000.0,
+        250_000.0,
+    )
+
+    exposure = 1.0 + 0.2 * vehicle_use + 0.05 * territory
+    mileage_scaled = annual_mileage / 10_000.0
+    value_log = np.log1p(vehicle_value / 10_000.0)
+    safety_sq = safety_score ** 2
+    age_sq = (age / 10.0) ** 2
+    age_cu = (age / 10.0) ** 3
+
+    logit = (
+        sim_cfg.beta_age2 * age_sq
+        + 0.08 * age_cu
+        + sim_cfg.beta_exp * (years_licensed / 10.0)
+        + sim_cfg.beta_mileage * mileage_scaled
+        + 0.35 * mileage_scaled ** 2
+        + sim_cfg.beta_territory * territory
+        + sim_cfg.beta_use * vehicle_use
+        + sim_cfg.beta_past_claims * np.log1p(past_claims_true)
+        + sim_cfg.beta_violations * np.log1p(violations_true)
+        + 0.30 * mileage_scaled * safety_score
+        + 0.25 * value_log * territory
+        + 0.20 * np.log1p(violations_true) * safety_sq
+        + 0.12 * (age / 10.0) * (vehicle_age / 10.0)
+        + 0.10 * value_log * mileage_scaled
+        + 0.25 * exposure
+    )
+    logit += sim_cfg.bias_strength * (0.5 * territory + 0.8 * A)
+
+    beta_0 = _calibrate_intercept(logit, target_rate=sim_cfg.target_claim_freq)
+    p_claim = _sigma(beta_0 + logit)
+    claim_indicator = rng.binomial(1, p_claim)
+
+    df = pd.DataFrame(
+        {
+            "A": A,
+            "territory": territory,
+            "age": age,
+            "years_licensed": years_licensed,
+            "annual_mileage": annual_mileage,
+            "vehicle_use": vehicle_use,
+            "vehicle_age": vehicle_age,
+            "vehicle_value": vehicle_value,
+            "safety_score": safety_score,
+            "past_claims_obs": past_claims_obs,
+            "violations_obs": violations_obs,
+            "credit_score": credit_score,
+            "income": income,
+            "claim_indicator": claim_indicator,
+            "past_claims_true": past_claims_true,
+            "violations_true": violations_true,
+        }
+    )
+
+    return df
+
 
 
 def train_test_split_auto(
