@@ -211,7 +211,7 @@ def generate_life_underwriting_data(
     )
 
     # Target event rate, e.g. 15%
-    beta_0 = _calibrate_intercept(eta_no_intercept, target_rate=0.05)
+    beta_0 = _calibrate_intercept(eta_no_intercept, target_rate=0.15)
     p_y = _sigma(beta_0 + eta_no_intercept)
     y = rng.binomial(1, p_y)
 
